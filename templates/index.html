@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transcripción en Tiempo Real</title>
+</head>
+<body>
+    <h1>Transcripción en Tiempo Real</h1>
+    <button id="start">🎤 Iniciar Grabación</button>
+    <button id="stop" disabled>⏹ Detener</button>
+    <p><strong>Transcripción:</strong></p>
+    <p id="transcription"></p>
+
+    <script>
+        let mediaRecorder;
+        let audioChunks = [];
+
+        document.getElementById("start").addEventListener("click", async () => {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+            mediaRecorder.start();
+
+            document.getElementById("start").disabled = true;
+            document.getElementById("stop").disabled = false;
+
+            mediaRecorder.ondataavailable = event => {
+                audioChunks.push(event.data);
+            };
+
+            mediaRecorder.onstop = async () => {
+                const audioBlob = new Blob(audioChunks, { type: "audio/wav" });
+                const formData = new FormData();
+                formData.append("file", audioBlob, "audio.wav");
+
+                const response = await fetch("/upload", {
+                    method: "POST",
+                    body: formData
+                });
+
+                const result = await response.json();
+                document.getElementById("transcription").innerText = result.transcription;
+
+                document.getElementById("start").disabled = false;
+                document.getElementById("stop").disabled = true;
+                audioChunks = [];
+            };
+        });
+
+        document.getElementById("stop").addEventListener("click", () => {
+            mediaRecorder.stop();
+        });
+    </script>
+</body>
+</html>
