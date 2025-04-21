@@ -1,0 +1,17 @@
+body {
+    background-color: #f4f4f4;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: #333;
+}
+
+h1 {
+    color: #b02b2c;
+}
+
+button {
+    min-width: 140px;
+}
+
+select {
+    min-width: 200px;
+}

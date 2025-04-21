@@ -6,50 +6,142 @@
     <title>Transcripción en Tiempo Real</title>
 </head>
 <body>
-    <h1>Transcripción en Tiempo Real</h1>
+    <h1>TRADUCTOR DE AUDIO A BRAILE </h1>
+    
+<label for="port">Selecciona un puerto:</label>
+<select id="port"></select>
+<button id="connect">Conectar</button>
+<p id="status"></p>
+
+
+<label for="model">Selecciona modelo Whisper:</label>
+<select id="model"></select>
+<button id="load-model">Cargar Modelo</button>
+<p id="model-status"></p>
+
+
     <button id="start">🎤 Iniciar Grabación</button>
     <button id="stop" disabled>⏹ Detener</button>
     <p><strong>Transcripción:</strong></p>
     <p id="transcription"></p>
 
     <script>
-        let mediaRecorder;
-        let audioChunks = [];
 
+// Cargar puertos disponibles al iniciar la página
+//boton para establecer el modelo
+document.getElementById("load-model").addEventListener("click", async () => {
+    const selected = document.getElementById("model").value;
+
+    const response = await fetch("/set_model", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: selected })
+    });
+
+    const result = await response.json();
+    if (result.success) {
+        document.getElementById("model-status").innerText = "✅ Modelo cargado: " + selected;
+    } else {
+        document.getElementById("model-status").innerText = "❌ Error: " + result.error;
+    }
+});
+
+
+
+
+window.addEventListener("DOMContentLoaded", async () => {
+    const response = await fetch("/list_ports");
+    const ports = await response.json();
+    const portSelect = document.getElementById("port");
+
+    ports.forEach(port => {
+        const option = document.createElement("option");
+        option.value = port;
+        option.textContent = port;
+        portSelect.appendChild(option);
+    });
+
+    if (ports.length === 0) {
+        const option = document.createElement("option");
+        option.textContent = "No se encontraron puertos";
+        option.disabled = true;
+        option.selected = true;
+        portSelect.appendChild(option);
+        document.getElementById("connect").disabled = true;
+    }
+
+
+    // Cargar modelos disponibles de Whisper
+// Cargar modelos disponibles de Whisper
+const modelSelect = document.getElementById("model");
+fetch("/list_models")
+    .then(res => res.json())
+    .then(models => {
+        models.forEach(m => {
+            const option = document.createElement("option");
+            option.value = m;
+            option.textContent = m;
+            modelSelect.appendChild(option);
+        });
+    });
+
+
+});
+
+
+
+        //variables para almacenar grabaciones
+        let mediaRecorder;
+        //array donde se almacena fragmentos de audio grabado
+        let audioChunks = [];
+        //iniciamos la grabacion de audio
         document.getElementById("start").addEventListener("click", async () => {
+            //solicita acceso al microfono del usuario
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            //crea y comienza la grabacion de audio
             mediaRecorder = new MediaRecorder(stream);
             mediaRecorder.start();
-
-            document.getElementById("start").disabled = true;
+            //desactiva el boton de iniciar y activa el de detener mientras se graba
+            document.getElementById("start").disabled = true;   
             document.getElementById("stop").disabled = false;
-
+            //cada vez que hay datos  de audio disponibles  se guardan en audiochunks
             mediaRecorder.ondataavailable = event => {
                 audioChunks.push(event.data);
             };
-
+            //esta funcion se  detiene cuando se detiene la grabacion
             mediaRecorder.onstop = async () => {
+                //une los fragmentos de audio en un solo archivo tipo wav
                 const audioBlob = new Blob(audioChunks, { type: "audio/wav" });
+                //prepara el archivo de audio para ser enviado como un formulario
                 const formData = new FormData();
                 formData.append("file", audioBlob, "audio.wav");
-
+                //envia el audio al endpoint /upload usando fetch
                 const response = await fetch("/upload", {
                     method: "POST",
                     body: formData
                 });
-
+                //muestra  en pantalla la transcripcion que devuelve el servidor
                 const result = await response.json();
                 document.getElementById("transcription").innerText = result.transcription;
+                document.getElementById("transcription").insertAdjacentHTML("beforeend",
+                `<br><small>🎧 Duración del audio: ${result.audio_duration} segundos</small>`);
 
+                
+
+document.getElementById("transcription").insertAdjacentHTML("beforeend",
+    `<br><small>⏱ Procesado en ${result.processing_time} segundos</small>`);
+                //reactiva el boton de grabar y desactiva el detener
                 document.getElementById("start").disabled = false;
+                //limpia los fragmentos de audio para futuras grabaciones
                 document.getElementById("stop").disabled = true;
                 audioChunks = [];
             };
         });
-
+//evento, cuando se hace click en detener se para la grabacion y se activa el proceso de envio al servidor 
         document.getElementById("stop").addEventListener("click", () => {
             mediaRecorder.stop();
         });
+        
     </script>
 </body>
 </html>
