@@ -3,6 +3,7 @@ import whisper
 import serial
 import time
 import serial.tools.list_ports
+import unicodedata
 from flask import Flask, request, jsonify, render_template
 from flask_socketio import SocketIO, emit
 from werkzeug.utils import secure_filename
@@ -11,25 +12,18 @@ from pydub import AudioSegment
 app = Flask(__name__)
 #habilitamos websockets para la comunicacion en tiempo real con la interfaz
 socketio = SocketIO(app, cors_allowed_origins="*")
-
-
 # Carga el modelo de Whisper
 model = None  # El modelo se cargará dinámicamente
-
-
-
 # Configuración de carpeta de subida
 #defien la carpeta donde se guardan los audios
 UPLOAD_FOLDER = "uploads"
 #crea una carpeta si no existe
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-
 # Configuración del puerto serial (ajusta el puerto según tu sistema)
 ser = serial.Serial('/dev/ttyACM0', 9600, timeout=1)
 #esperamos dos segundos 
 time.sleep(2)  # Esperar a que Arduino inicie
-
 # Diccionario de letras a Braille (puntos activos 1 = levantado, 0 = bajado)
 braille_dict = {
     "a": [1, 0, 0, 0, 0, 0], "b": [1, 1, 0, 0, 0, 0],
@@ -47,13 +41,11 @@ braille_dict = {
     "y": [1, 0, 1, 1, 1, 1], "z": [1, 0, 1, 0, 1, 1],
     " ": [0, 0, 0, 0, 0, 0]  # Espacio en blanco
 }
-
 @app.route('/list_ports', methods=['GET'])
 def list_ports():
     ports = serial.tools.list_ports.comports()
     port_list = [port.device for port in ports]
     return jsonify(port_list)
-
 
 #creamos una ruta para devolver modelos disponibles 
 @app.route('/list_models', methods=['GET'])
@@ -67,7 +59,6 @@ def set_model():
     global model
     data = request.get_json()
     selected_model = data.get("model")
-
     try:
         model = whisper.load_model(selected_model)
         return jsonify({"success": True})
@@ -76,10 +67,11 @@ def set_model():
 
 # Función para convertir texto en Braille
 def convert_to_braille(text):
+    normalized = normalize_text(text.lower())
     #creamos una lista vacia para almacenar la conversion a braile
     braille_translation = []
     #convertir el texto recibido a minusculas  y recorremos todos los caracteres del texto
-    for char in text.lower():
+    for char in normalized:
         if char in braille_dict:
             braille_translation.append(braille_dict[char])
     return braille_translation
@@ -93,8 +85,14 @@ def send_to_arduino(braille_data):
         command = ",".join(map(str, letter))  # Convertir lista a cadena "1,0,1,0,0,0"
         #enviamos string a arduino
         ser.write((command + "\n").encode())  # Enviar por Serial
-        time.sleep(1)  # Esperar 1 segundo entre letras
+        time.sleep(4.5)  # Esperar 1 segundo entre letras
 
+def normalize_text(text):
+    # Elimina acentos y caracteres especiales, dejando solo letras básicas
+    return ''.join(
+        c for c in unicodedata.normalize('NFD', text)
+        if unicodedata.category(c) != 'Mn'
+    )
 
 @app.route('/')
 def index():
@@ -103,7 +101,6 @@ def index():
 #recibimos archivos de audio
 @app.route('/upload', methods=['POST'])
 def upload_audio():
-
     start_time = time.time() #inicio del temporizador
     #verificamo si hay un archivo en la solicitud
     if "file" not in request.files:
